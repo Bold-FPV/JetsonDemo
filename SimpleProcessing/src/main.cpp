@@ -19,7 +19,7 @@ const int MIN_SAT = 0, MAX_SAT = 255;
 const int MIN_VAL = 50, MAX_VAL = 255;
 
 //parameters for gstreamer
-int device = 0;
+int device = 1;
 int width = 320;
 int height = 240;
 int framerate = 15;
@@ -28,8 +28,8 @@ int bitrate = 600000;
 int port = 5805;
 
 //ip addresses for network tables and the video receiver
-string netTablesIP = "192.168.1.34";
-string videoSinkIP = "192.168.1.34";
+string netTablesIP = "192.168.1.130";
+string videoSinkIP = "192.168.1.130";
 
 shared_ptr<NetworkTable> mNetworkTable;
 typedef std::vector<cv::Point> contour_type;

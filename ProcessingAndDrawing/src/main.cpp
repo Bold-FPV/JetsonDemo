@@ -5,7 +5,7 @@
 using namespace std;
 
 shared_ptr<NetworkTable> myNetworkTable; //our networktable for reading/writing
-string netTableAddress = "192.168.1.34"; //address of the rio
+string netTableAddress = "192.168.1.130"; //address of the rio
 
 //useful for testing OpenCV drawing to see you can modify an image
 void fillCircle (cv::Mat img, int rad, cv::Point center);
@@ -13,7 +13,7 @@ void pushToNetworkTables (VisionResultsPackage info);
 
 //camera parameters
 int 
-device = 0, //bc we are using video0 in this case
+device = 1, //bc we are using video0 in this case
 width = 320, 
 height = 240, 
 framerate = 15, 
@@ -24,7 +24,7 @@ int
 bitrate = 600000, //kbit/sec over network
 port_stream = 5806, //destination port for raw image
 port_thresh = 5805; //destination port for thresholded image
-string ip = "192.168.1.34"; //destination ip
+string ip = "192.168.1.130"; //destination ip
 
 string tableName = "CVResultsTable";
 
