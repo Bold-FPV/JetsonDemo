@@ -1,15 +1,21 @@
 #include "helper.hpp"
 #include "gst_pipeline.hpp"
-#include "vision.hpp"
+#include "GripPipeline.h"
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 using namespace std;
 
 shared_ptr<NetworkTable> myNetworkTable; //our networktable for reading/writing
+shared_ptr<NetworkTable> myContoursNetworkTable;
 string netTableAddress = "192.168.1.130"; //address of the rio
 
 //useful for testing OpenCV drawing to see you can modify an image
 void fillCircle (cv::Mat img, int rad, cv::Point center);
-void pushToNetworkTables (VisionResultsPackage info);
+void pushToNetworkTables (std::vector<std::vector<cv::Point> >* data);
+
+//GRIP Pipeline
+grip::GripPipeline myGrip;
 
 //camera parameters
 int 
@@ -26,9 +32,16 @@ port_stream = 5806, //destination port for raw image
 port_thresh = 5805; //destination port for thresholded image
 string ip = "192.168.1.130"; //destination ip
 
-string tableName = "CVResultsTable";
+string tableName = "GripResults";
+string contourTableName = tableName + "/" + "MyContoursReport";
 
 bool verbose = true;
+
+struct ContourReport {
+	i64 timestamp;
+	std::vector<cv::Rect> boundingbox;
+	std::vector<double> centerY, centerX, width, height, area, solidity;
+};
 
 void flash_good_settings() {
     char setting_script[100];
@@ -53,6 +66,7 @@ int main () {
     NetworkTable::Initialize();
     if (verbose) printf ("Initialized table\n");
     myNetworkTable = NetworkTable::GetTable(tableName);
+    myContoursNetworkTable = NetworkTable::GetTable(contourTableName);
 
     //open camera using CvCapture_GStreamer class
     CvCapture_GStreamer mycam;
@@ -82,11 +96,6 @@ int main () {
     //initialize raw & processed image matrices
     cv::Mat cameraFrame, processedImage;
 
-    if (verbose) {
-        printf ("Data header:\n%s", 
-            VisionResultsPackage::createCSVHeader().c_str());
-    }
-
     //take each frame from the pipeline
     for (long long frame = 0; ; frame++) {
         //have to alternate from bad settings to good settings on some cameras
@@ -109,18 +118,14 @@ int main () {
             processedImage = cameraFrame;
                 
             //process the image, put the information into network tables
-            VisionResultsPackage info = calculate(cameraFrame, processedImage);
+		myGrip.Process(cameraFrame);
+		pushToNetworkTables(myGrip.GetFilterContoursOutput());
+		processedImage = (myGrip.GetHslThresholdOutput()) -> clone();
+		cv::cvtColor(processedImage, processedImage, CV_GRAY2BGR);
+		IplImage outimage = (IplImage) processedImage;
 
-            pushToNetworkTables (info);
-          
             //pass the results back out
-            IplImage outImage = (IplImage) processedImage;
-            printf ("results string: %s\n", info.createCSVLine().c_str());
-            if (verbose) {
-                printf ("Out image stats: (depth %d), (nchannels %d)\n", 
-                    outImage.depth, outImage.nChannels);
-            }
-            mywriter.writeFrame (&outImage); //write output image over network
+            mywriter.writeFrame (&outimage); //write output image over network
         }
 
         //delay for 10 millisecondss
@@ -138,12 +143,37 @@ void fillCircle (cv::Mat img, int rad, cv::Point center) {
     cv::circle (img, center, rad, cv::Scalar(0, 0, 255), thickness, lineType);
 }
 
-void pushToNetworkTables (VisionResultsPackage info) {
-    myNetworkTable -> PutString ("VisionResults", info.createCSVLine());
-    myNetworkTable -> PutString ("VisionResultsHeader", info.createCSVHeader());
-    myNetworkTable -> PutNumber ("Sample Hue", info.sampleHue);
-    myNetworkTable -> PutNumber ("Sample Sat", info.sampleSat);
-    myNetworkTable -> PutNumber ("Sample Val", info.sampleVal);
+void pushToNetworkTables (std::vector<std::vector<cv::Point> >* data) {
+std::vector<std::vector<cv::Point> >::const_iterator i;
+ContourReport report;
+    
+myNetworkTable -> PutNumber ("NumContoursFound", data -> size());
+for (i=data->begin(); i != data->end(); ++i)
+{
+	cv::Rect rect = cv::boundingRect(*i);
+	double area = cv::contourArea(*i);
+	std::vector<cv::Point> hull;
+	cv::convexHull(*i, hull,false, true);
+	
+
+	report.boundingbox.push_back(rect);
+	report.area.push_back(area);
+	report.solidity.push_back(area / cv::contourArea(hull));
+	
+
+	report.width.push_back(rect.width);
+	report.height.push_back(rect.height);
+	report.centerX.push_back(rect.x + (rect.width/2.0));
+	report.centerY.push_back(rect.y + (rect.height/2.0));
+	
+}
+
+myContoursNetworkTable -> PutNumberArray ("centerX", report.centerX);
+myContoursNetworkTable -> PutNumberArray ("centerY", report.centerY);
+myContoursNetworkTable -> PutNumberArray ("width", report.width);
+myContoursNetworkTable -> PutNumberArray ("height", report.height);
+myContoursNetworkTable -> PutNumberArray ("area", report.area);
+myContoursNetworkTable -> PutNumberArray ("solidity", report.solidity);
     myNetworkTable -> Flush();
 }
 
